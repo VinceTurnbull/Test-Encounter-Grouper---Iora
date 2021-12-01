@@ -1,0 +1,34 @@
+
+
+with trigger_and_shells as (
+  select encounter_key, unique_key, member_ssn
+  from "testdb"."vt_sample_GA_Iora_Enc_TriggerShells"
+  group by 1,2,3),
+
+add_initial_shell_key as (
+select a.*
+, (case 
+   when a.major_service_category = 'Inpatient Facility' and b.encounter_key is NULL then concat(a.member_ssn, cast(a.coh_admit_date as varchar) , cast(a.coh_discharge_date as varchar))
+   else b.encounter_key end) as shell_key
+, d.rbcs_id
+, d.rbcs_cat_desc
+, d.rbcs_subcat_desc
+, d.rbcs_family_desc
+, d.rbcs_major_ind
+, (case when a.dsc_with_hierarchy in ('Home Health', 'SNF') then a.dsc_with_hierarchy else 'Non PACT' end )as PACT_FLAG
+
+from "testdb"."vt_sample_GA_Iora_ServiceClassification" a
+left join trigger_and_shells b
+on a.unique_key = b.unique_key
+and a.member_ssn = b.member_ssn
+
+left join "testdb"."servicemapping_betos" d
+on a.procedure_code = d.procedure_code
+
+-- remove this  going foward!!
+-- 226 lines
+where a.member_ssn Like '%21328221%' )
+
+select * 
+from add_initial_shell_key 
+order by service_from_date
