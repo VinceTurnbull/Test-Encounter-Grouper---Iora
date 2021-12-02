@@ -25,7 +25,8 @@ on a.procedure_code = d.procedure_code
 
 -- remove this  going foward!!
 -- 226 lines
-where a.member_ssn Like '%21328221%' ),
+where a.member_ssn Like '%21328221%' 
+  ),
 
 clean_up_shell_key as (
   select a.*
@@ -119,10 +120,11 @@ left join dedup_relevant_dxs b
 on a.final_shell_key = b.final_shell_key
 and (b.Dx LIKE concat('%', trim(substring(a.diagnosis_code1,1,2)) ,'%')
      or b.Dx LIKE concat('%', trim(substring(a.diagnosis_code2,1,2)) ,'%'))
-  ))
+  )),
   
 
-
+/****** reassign the top rbcsID ********/
+rbcs_id_identification as (
 select encounter_ID
 , rbcs_id
 , rbcs_major_ind
@@ -131,5 +133,84 @@ select encounter_ID
 from split_shells
 where encounter_ID is not NULL
 and rbcs_id is not NULL
-group by 1,2,3,4
-order by 1
+group by 1,2,3,4),
+
+-- Encounters with M procedure, highest in hierarchy
+M_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'M'
+group by 1,2)),
+
+O_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'O'
+  and encounter_ID not in (select encounter_ID from M_Enc)
+group by 1,2)),
+
+N_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'N'
+  and encounter_ID not in (select encounter_ID from M_Enc)
+  and encounter_ID not in (select encounter_ID from O_Enc)
+group by 1,2)),
+
+Rank_rbcsID as (
+select * 
+from M_Enc
+where rank_rbcsID = 1
+
+UNION ALL
+
+select * 
+from O_Enc
+where rank_rbcsID = 1
+
+UNION ALL
+
+select * 
+from N_Enc
+where rank_rbcsID = 1),
+
+
+/************************ Join top rbcsID back to claims **************/ 
+join_top_rbcs as (
+select a.*
+, b.rbcs_id as top_rbcsID
+from split_shells a
+left join Rank_rbcsID b
+on a.encounter_ID = b.encounter_ID),
+
+RBCS_IDs as (
+  select rbcs_ID
+  , rbcs_cat_desc
+  , rbcs_subcat_desc
+  , rbcs_family_desc
+  from  "testdb"."servicemapping_betos"
+  group by 1,2,3,4)
+
+select a.*
+, d.rbcs_cat_desc as ENC_rbcs_cat_desc
+, d.rbcs_subcat_desc as ENC_rbcs_subcat_desc
+, d.rbcs_family_desc as ENC_rbcs_family_desc
+from join_top_rbcs a
+left join RBCS_IDs d
+on a.top_rbcsID = d.rbcs_ID
+order by service_from_date
