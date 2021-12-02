@@ -44,6 +44,7 @@ Add_Procedure_Hierarchy_Shell_Key as (
   from clean_up_shell_key a),
   
 
+/***************** Relevant Dxs to splut shells into related encounters***********/
 relevant_dxs as(
   select final_shell_key
   , concat((case 
@@ -54,8 +55,9 @@ relevant_dxs as(
             when substring(diagnosis_code2,1,2) is NULL then 'NULL' 
             else substring(diagnosis_code2,1,2) end)) as Dx
   from Add_Procedure_Hierarchy_Shell_Key
-  group by 1,2)
-  
+  group by 1,2),
+
+Dx_xWalk as (
 select * 
 , rank() over(partition by final_shell_key order by allowed_amount_sum desc) as rank_Dx_combo
 from (
@@ -67,6 +69,55 @@ on a.final_shell_key = b.final_shell_key
 and (a.Dx LIKE concat('%', trim(substring(b.diagnosis_code1,1,2)) ,'%')
      OR a.Dx LIKE concat('%', trim(substring(b.diagnosis_code2,1,2)) ,'%'))
 where substring(a.Dx,1,1) not in ('R', 'Z')
-group by 1,2)
-order by 1
+group by 1,2)),
+
+-- split to columne
+Dx_to_column as (
+select a.*
+, split_part(Dx, ',', 1) as split_dx_1
+, split_part(Dx, ',', 2) as split_dx_2
+from Dx_xWalk a),
+
+-- final Dxs and dedup
+final_relevant_Dx as (
+select final_shell_key
+, Dx
+, rank_Dx_combo
+, (row_number() over(partition by final_shell_key, rank_Dx_combo )) as row_number
+from (
+select a.*
+, min(b.rank_Dx_combo) as min_Dx_rank
+from Dx_to_column a
+inner join Dx_to_column b
+on a.final_shell_key = b.final_shell_key
+and (a.Dx LIKE concat('%', trim(substring(b.split_dx_1,1,2)) ,'%')
+     or a.Dx LIKE concat('%', trim(substring(b.split_dx_2,1,2)) ,'%'))
+ group by 1,2,3,4,5,6)
+ where rank_Dx_combo = min_Dx_rank),
+ 
+ dedup_relevant_dxs as (
+ select *
+ from final_relevant_Dx
+  where row_number = 1)
+
+
+-- Add enc key edits for M and O proc codes
+select *
+from(
+select a.*
+, (case 
+   when a.shell_key_max = 'M' then 1 
+   when (a.shell_key_max = 'O' and substring(a.diagnosis_code1,1,1) in ('R', 'Z')) then 1
+   when (a.shell_key_max = 'O' and substring(a.diagnosis_code1,1,1) not in ('R', 'Z')) then b.rank_Dx_combo 
+   else NULL end)
+from Add_Procedure_Hierarchy_Shell_Key a
+left join dedup_relevant_dxs b
+on a.final_shell_key = b.final_shell_key
+and (b.Dx LIKE concat('%', trim(substring(a.diagnosis_code1,1,2)) ,'%')
+     or b.Dx LIKE concat('%', trim(substring(a.diagnosis_code2,1,2)) ,'%'))
+order by service_from_date)
+   
+
+
+
 
