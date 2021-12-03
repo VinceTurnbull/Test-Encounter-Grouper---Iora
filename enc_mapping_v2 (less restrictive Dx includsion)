@@ -1,6 +1,5 @@
 --  CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_encounterids_v2" AS
 
-
 with trigger_and_shells as (
   select shell_key, unique_key, member_ssn
   from "testdb"."vt_sample_GA_Iora_Enc_TriggerShells_v2"
@@ -28,7 +27,7 @@ on a.procedure_code = d.procedure_code
 
 -- remove this  going foward!!
 -- 226 lines
-where a.member_ssn Like '%20289327%' 
+-- where a.member_ssn Like '%20289327%' 
   ),
 
 clean_up_shell_key as (
@@ -215,10 +214,10 @@ RBCS_IDs as (
   , rbcs_subcat_desc
   , rbcs_family_desc
   from  "testdb"."servicemapping_betos"
-  group by 1,2,3,4)
+  group by 1,2,3,4),
 
 -- final Enc rbcs mapping
-
+final_Enc_mapping as (
 select *
 , (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then concat(final_shell_key, '_PACT')
    else encounter_ID end) as encounter_ID_final
@@ -240,6 +239,42 @@ select a.*
 from join_top_rbcs a
 left join RBCS_IDs d
 on a.top_rbcsID = d.rbcs_ID
-order by service_from_date)
+order by service_from_date)),
 
-limit 100
+
+pos_assignment as (
+select *
+from (
+select encounter_ID_final
+, pos_type
+, rank() over (partition by encounter_ID_final order by allowed_amount desc) pos_rank
+from (
+select encounter_ID_final
+, (case 
+   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP'
+   else 'OP' end) pos_type
+, sum(allowed_amount) as allowed_amount
+from final_Enc_mapping
+group by 1,2)
+  )
+ where pos_rank = 1
+  group by 1,2,3)
+ 
+ -- map pos
+ select a.*
+ , (case when a.encounter_ID_final LIKE '%_PACT' then a.dsc_with_hierarchy
+    else b.pos_type end) as pos_type
+ from final_Enc_mapping a
+ left join pos_assignment b
+ on a.encounter_ID_final =  b.encounter_ID_final
+
+
+
+
+
+
+
+
+
+
+
