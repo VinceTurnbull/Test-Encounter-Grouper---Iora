@@ -54,6 +54,7 @@ from sample_data
 where major_service_category != 'Professional Services'
 group by 1,2,3,4,5,6,7),
 
+
 -- dedup (ex. if an OP facility is within IP faciltiy date ranges)
 dedup_Overlapping_facility  as (
 select * 
@@ -77,11 +78,10 @@ from facility_claim_identification a
 inner join facility_claim_identification b
 on (b.coh_admit_date between a.coh_admit_date and a.coh_discharge_date)
 and a.ACUTE_FLAG = b.ACUTE_FLAG
-and a.member_ssn = b.member_ssn
-where a.member_ssn = '296904853'))
+and a.member_ssn = b.member_ssn))
 group by 1,2,3,4,5
 ),
-   
+
 
 -- Add facility admit and discharge date (if the unique key belongs to a facility claim)
 Facility_triggers as (
@@ -128,13 +128,6 @@ select a.*
 
 select *
 from final_shellKeys
-
-
-
-
-
-
-
 
 
 
