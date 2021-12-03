@@ -28,7 +28,7 @@ on a.procedure_code = d.procedure_code
 
 -- remove this  going foward!!
 -- 226 lines
-where a.member_ssn Like '%21328221%' 
+-- where a.member_ssn Like '%21328221%' 
   ),
 
 clean_up_shell_key as (
