@@ -28,7 +28,7 @@ on a.procedure_code = d.procedure_code
 
 -- remove this  going foward!!
 -- 226 lines
--- where a.member_ssn Like '%20289327%' 
+where a.member_ssn Like '%20289327%' 
   ),
 
 clean_up_shell_key as (
@@ -207,6 +207,8 @@ from split_shells a
 left join Rank_rbcsID b
 on a.encounter_ID = b.encounter_ID),
 
+
+
 RBCS_IDs as (
   select rbcs_ID
   , rbcs_cat_desc
@@ -215,6 +217,22 @@ RBCS_IDs as (
   from  "testdb"."servicemapping_betos"
   group by 1,2,3,4)
 
+-- final Enc rbcs mapping
+
+select *
+, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then concat(final_shell_key, '_PACT')
+   else encounter_ID end) as encounter_ID_final
+
+, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+   else ENC_rbcs_cat_desc end) as ENC_rbcs_cat_desc_final
+
+, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+   else ENC_rbcs_subcat_desc end) as ENC_rbcs_subcat_desc_final
+
+, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+   else ENC_rbcs_family_desc end) as ENC_rbcs_family_desc_final
+   
+ from (
 select a.*
 , d.rbcs_cat_desc as ENC_rbcs_cat_desc
 , d.rbcs_subcat_desc as ENC_rbcs_subcat_desc
@@ -222,6 +240,6 @@ select a.*
 from join_top_rbcs a
 left join RBCS_IDs d
 on a.top_rbcsID = d.rbcs_ID
-order by service_from_date
+order by service_from_date)
 
 limit 100
