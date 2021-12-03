@@ -1,0 +1,140 @@
+CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_triggershells_v2" AS
+
+with rbcs_table as (
+  select rbcs_id
+, rbcs_cat_desc
+, rbcs_subcat_desc
+, rbcs_family_desc
+, rbcs_major_ind
+from "testdb"."servicemapping_betos"
+group by 1,2,3,4,5),
+
+sample_data as (
+  select *
+  , (case when dsc_with_hierarchy in ('Hospice', 'SNF') then 'Non Acute' else 'Acute' end )as ACUTE_FLAG
+  from "testdb"."vt_sample_ga_iora_serviceclassification" ),
+
+
+triggers as (
+select * from (
+SELECT a.member_ssn
+, a.unique_key
+, a.unique_key_ungrouped
+, a.procedure_code
+, d.rbcs_id
+, d.rbcs_cat_desc
+, d.rbcs_subcat_desc
+, d.rbcs_family_desc
+, d.rbcs_major_ind
+, a.service_from_date
+, a.major_service_category	
+, a.dsc_with_hierarchy	
+, (case when a.dsc_with_hierarchy in ('Home Health', 'SNF') then a.dsc_with_hierarchy else 'Non PACT' end )as PACT_FLAG
+, (case when a.dsc_with_hierarchy in ('Hospice', 'SNF') then 'Non Acute' else 'Acute' end )as ACUTE_FLAG
+, sum(allowed_amount) as allowed
+FROM sample_data a
+
+left join "testdb"."servicemapping_betos" d
+on a.procedure_code = d.procedure_code
+where a.reversal_flag = 1
+group by 1,2,3,4,5,6,7,8,9,10,11,12,13
+  )
+where rbcs_id is not NULL),
+
+-- Identify all facility claims
+facility_claim_identification as (
+select member_ssn
+, unique_key
+, coh_admit_date
+, coh_discharge_date
+, major_service_category
+, dsc_with_hierarchy 
+, ACUTE_FLAG
+from sample_data
+where major_service_category != 'Professional Services'
+group by 1,2,3,4,5,6,7),
+
+-- dedup (ex. if an OP facility is within IP faciltiy date ranges)
+dedup_Overlapping_facility  as (
+select * 
+from (
+select member_ssn
+, admit_key
+, ACUTE_FLAG
+, min(coh_admit_date) over (partition by admit_key) as dedup_admit
+, max(coh_discharge_date) over (partition by admit_key) as dedup_discharge
+from (
+select a.member_ssn
+, a.unique_key
+, a.coh_admit_date
+, a.coh_discharge_date
+, a.ACUTE_FLAG
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar)) as admit_key
+, b.unique_key as unique_key_2
+, b.coh_admit_date as coh_admit_date_2
+, b.coh_discharge_date as coh_discharge_date_2
+from facility_claim_identification a
+inner join facility_claim_identification b
+on (b.coh_admit_date between a.coh_admit_date and a.coh_discharge_date)
+and a.ACUTE_FLAG = b.ACUTE_FLAG
+and a.member_ssn = b.member_ssn
+where a.member_ssn = '296904853'))
+group by 1,2,3,4,5
+),
+   
+
+-- Add facility admit and discharge date (if the unique key belongs to a facility claim)
+Facility_triggers as (
+select a.*
+, b.coh_admit_date
+, b.coh_discharge_date
+from triggers a
+left join facility_claim_identification b
+on a.unique_key = b.unique_key),
+
+
+
+-- use admit and discharge date from prev step if IP (to handle small chance of SNF happening during acute fac stay), else wrap around
+facility_wrapping_around_prof as (
+select a.*
+, (case 
+   when a.major_service_category = 'Inpatient Facility' then a.coh_admit_date
+   else min(c.dedup_admit) over (partition by c.admit_key) end ) as wrap_coh_admit 
+, (case
+   when a.major_service_category = 'Inpatient Facility' then a.coh_discharge_date
+   else max(c.dedup_discharge) over (partition by c.admit_key) end) as wrap_coh_discharge
+from Facility_triggers a
+left join dedup_Overlapping_facility c
+on a.member_ssn = c.member_ssn 
+and (a.service_from_date between c.dedup_admit and c.dedup_discharge)
+and a.ACUTE_FLAG = c.ACUTE_FLAG),
+
+
+final_shells as (
+select a.*
+,  (case 
+    when a.wrap_coh_admit is NULL then service_from_date
+    else a.wrap_coh_admit end) as shell_start
+,  (case 
+    when a.wrap_coh_discharge is NULL then service_from_date
+    else a.wrap_coh_discharge end) as shell_end
+ from facility_wrapping_around_prof a),
+ 
+ final_shellKeys as (
+ select a.*
+ , concat(member_ssn, cast(shell_start as varchar), cast(shell_end as varchar)) as shell_key
+ from final_shells a)
+
+
+select *
+from final_shellKeys
+
+
+
+
+
+
+
+
+
+
