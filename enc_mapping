@@ -1,13 +1,16 @@
+CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_encounterids_v2" AS
+
+
 with trigger_and_shells as (
-  select encounter_key, unique_key, member_ssn
-  from "testdb"."vt_sample_GA_Iora_Enc_TriggerShells"
+  select shell_key, unique_key, member_ssn
+  from "testdb"."vt_sample_GA_Iora_Enc_TriggerShells_v2"
   group by 1,2,3),
 
 add_initial_shell_key as (
 select a.*
 , (case 
-   when a.major_service_category = 'Inpatient Facility' and b.encounter_key is NULL then concat(a.member_ssn, cast(a.coh_admit_date as varchar) , cast(a.coh_discharge_date as varchar))
-   else b.encounter_key end) as shell_key
+   when a.major_service_category = 'Inpatient Facility' and b.shell_key is NULL then concat(a.member_ssn, cast(a.coh_admit_date as varchar) , cast(a.coh_discharge_date as varchar))
+   else b.shell_key end) as shell_key
 , d.rbcs_id
 , d.rbcs_cat_desc
 , d.rbcs_subcat_desc
