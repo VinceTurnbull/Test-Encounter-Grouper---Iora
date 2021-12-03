@@ -1,4 +1,4 @@
---  CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_encounterids_v2" AS
+CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_encounterids_vTEST" AS
 
 with trigger_and_shells as (
   select shell_key, unique_key, member_ssn
@@ -222,13 +222,13 @@ select *
 , (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then concat(final_shell_key, '_PACT')
    else encounter_ID end) as encounter_ID_final
 
-, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+, (case when (ENC_rbcs_cat_desc is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
    else ENC_rbcs_cat_desc end) as ENC_rbcs_cat_desc_final
 
-, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+, (case when (ENC_rbcs_cat_desc is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
    else ENC_rbcs_subcat_desc end) as ENC_rbcs_subcat_desc_final
 
-, (case when (encounter_ID is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
+, (case when (ENC_rbcs_cat_desc is NULL and reversal_flag = 1 and dsc_with_hierarchy in( 'SNF', 'Home Health')) then 'Other Facility'
    else ENC_rbcs_family_desc end) as ENC_rbcs_family_desc_final
    
  from (
@@ -262,7 +262,7 @@ group by 1,2)
  
  -- map pos
  select a.*
- , (case when a.encounter_ID_final LIKE '%_PACT' then a.dsc_with_hierarchy
+ , (case when a.ENC_rbcs_cat_desc_final =  'Other Facility' then a.dsc_with_hierarchy
     else b.pos_type end) as pos_type
  from final_Enc_mapping a
  left join pos_assignment b
