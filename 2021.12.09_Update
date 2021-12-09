@@ -1,0 +1,103 @@
+-- CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_triggershells_v2" AS
+
+with rbcs_table as (
+  select rbcs_id
+, rbcs_cat_desc
+, rbcs_subcat_desc
+, rbcs_family_desc
+, rbcs_major_ind
+from "testdb"."servicemapping_betos"
+group by 1,2,3,4,5),
+
+sample_data as (
+  select *
+  , (case when dsc_with_hierarchy in ('Hospice', 'SNF') then 'NonAcute' else 'Acute' end )as ACUTE_FLAG
+  from "testdb"."vt_sample_ga_iora_serviceclassification" ),
+
+-- Identify IP facility 
+IP_facility_claim_identification as (
+select member_ssn
+, unique_key
+, coh_admit_date
+, coh_discharge_date
+, major_service_category
+, dsc_with_hierarchy 
+, ACUTE_FLAG
+, (case 
+   when dsc_with_hierarchy = 'SNF' then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_SNF')
+   when dsc_with_hierarchy != 'SNF' then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_NonSNF')
+   else NULL end) as IP_shell_key
+from sample_data
+where major_service_category = 'Inpatient Facility'
+group by 1,2,3,4,5,6,7),
+
+
+/*********IP Shell Identification**************/
+-- add shell for SNF; POS 31-33 is for SNF, so non IP claims happening along a IP facility claim will be assigned to the SNF encounter if having same POS
+Add_SNF_shells as (
+select a.*
+, b.IP_shell_key as shell_key
+from sample_data a
+inner join (select * from IP_facility_claim_identification where dsc_with_hierarchy = 'SNF')  b
+on a.member_ssn = b.member_ssn 
+and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
+where (a.pos in ('31', '32', '33') and a.major_service_category != 'Inpatient Facility')
+  
+  UNION ALL
+  
+select a.*
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_IP_SNF')
+from sample_data a
+where dsc_with_hierarchy = 'SNF'),
+
+-- same thing for hospice, hospice is POS 34
+Add_Hospice_shells as (
+select a.*
+, b.IP_shell_key as shell_key
+from sample_data a
+inner join (select * from IP_facility_claim_identification where dsc_with_hierarchy = 'Hospice')  b
+on a.member_ssn = b.member_ssn 
+and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
+where (a.pos in ('34') and a.major_service_category != 'Inpatient Facility')
+  
+  UNION ALL
+  
+select a.*
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_IP_Hospice')
+from sample_data a
+where dsc_with_hierarchy = 'Hospice'),
+
+
+-- combine above two steps for the non-acute IP shell assignment
+combine_NonAcute_IP_Shells as (
+select * from Add_SNF_shells
+UNION ALL 
+select * from Add_Hospice_shells)
+
+select sum(allowed_amount)
+from combine_NonAcute_IP_Shells
+-- where dsc_with_hierarchy in ('SNF', 'Hospice')
+
+-- 829758.19 test SNF/Hospice claims
+-- 829758.19 orig
+-- with assignment 893295.62, good 
+
+
+/*********OP Visit Shell Identification**************/
+
+
+
+
+/*********All Other Shell Identification**************/
+
+
+-- 31,921,982.62 Test
+-- 31,895,146.59 Orig
+
+
+
+
+
+
+
+
