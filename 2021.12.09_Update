@@ -50,6 +50,8 @@ select a.*
 from sample_data a
 where dsc_with_hierarchy = 'SNF'),
 
+
+
 -- same thing for hospice, hospice is POS 34
 Add_Hospice_shells as (
 select a.*
@@ -72,15 +74,45 @@ where dsc_with_hierarchy = 'Hospice'),
 combine_NonAcute_IP_Shells as (
 select * from Add_SNF_shells
 UNION ALL 
-select * from Add_Hospice_shells)
+select * from Add_Hospice_shells),
 
-select sum(allowed_amount)
-from combine_NonAcute_IP_Shells
--- where dsc_with_hierarchy in ('SNF', 'Hospice')
+
+
+/************IP Acute Shells ***************/
+Add_AcuteIP_shells as (
+select a.*
+, b.IP_shell_key as shell_key
+from sample_data a
+inner join (select * from IP_facility_claim_identification where dsc_with_hierarchy not in ('SNF', 'Hospice'))  b
+on a.member_ssn = b.member_ssn 
+and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
+where a.major_service_category != 'Inpatient Facility' 
+  and a.unique_key not in (select distinct unique_key from combine_NonAcute_IP_Shells)
+  
+  UNION ALL
+  
+select a.*
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_IP_Acute')
+from sample_data a
+where dsc_with_hierarchy not in ('SNF', 'Hospice'))
+
+select * from Add_AcuteIP_shells
+limit 100
+
+
+
+
+
 
 -- 829758.19 test SNF/Hospice claims
 -- 829758.19 orig
 -- with assignment 893295.62, good 
+
+
+
+
+
+
 
 
 /*********OP Visit Shell Identification**************/
