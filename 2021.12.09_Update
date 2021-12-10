@@ -61,7 +61,9 @@ from sample_data a
 inner join (select * from IP_facility_claim_identification where dsc_with_hierarchy = 'Hospice')  b
 on a.member_ssn = b.member_ssn 
 and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
-where (a.pos in ('34') and a.major_service_category != 'Inpatient Facility')
+where (a.pos in ('34') 
+       and a.major_service_category != 'Inpatient Facility'
+       and a.unique_key not in (select unique_key from Add_SNF_shells where unique_key is not NULL))
   
   UNION ALL
   
@@ -95,6 +97,7 @@ on a.member_ssn = b.member_ssn
 and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
 where a.major_service_category != 'Inpatient Facility' 
   and a.pos not in ('31', '32','33','34')
+  and a.unique_key not in (select unique_key from combine_NonAcute_IP_Shells where unique_key is not NULL)
   
   UNION ALL
   
@@ -215,14 +218,14 @@ select * from Add_OP_Visits)
 
 
 
-
-
-
-
+select sum(allowed_amount)
+from Add_HH_Shells
+-- where unique_key in (select unique_key from Add_HH_Shells where unique_key is not null)
 
 /*********All Other Shell Identification; all remaining services**************/
-
-
+-- 20012187.19 assigned
+-- 11991594.22 remaining
+-- 63.46
 
 
 -- 31,921,982.62 Test
