@@ -25,7 +25,8 @@ select member_ssn
 , ACUTE_FLAG
 , (case 
    when dsc_with_hierarchy = 'SNF' then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_SNF')
-   when dsc_with_hierarchy != 'SNF' then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_NonSNF')
+   when dsc_with_hierarchy = 'Hospice' then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_Hospice')
+   when dsc_with_hierarchy not in ('SNF','Hospice') then concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_IP_Acute')
    else NULL end) as IP_shell_key
 from sample_data
 where major_service_category = 'Inpatient Facility'
@@ -77,6 +78,12 @@ UNION ALL
 select * from Add_Hospice_shells),
 
 
+-- 829758.19 test SNF/Hospice claims
+-- 829758.19 orig
+-- with assignment 893295.62, good 
+
+
+
 
 /************IP Acute Shells ***************/
 Add_AcuteIP_shells as (
@@ -94,19 +101,29 @@ where a.major_service_category != 'Inpatient Facility'
 select a.*
 , concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_IP_Acute')
 from sample_data a
-where dsc_with_hierarchy not in ('SNF', 'Hospice'))
+where a.dsc_with_hierarchy not in ('SNF', 'Hospice')
+  and a.major_service_category = 'Inpatient Facility'),
 
-select * from Add_AcuteIP_shells
+
+IP_Shells as (
+select * from combine_NonAcute_IP_Shells
+
+UNION ALL
+
+select * from Add_AcuteIP_shells)
+
+select sum(allowed_amount)
+from IP_Shells
+-- where major_service_category = 'Inpatient Facility'
 limit 100
 
 
+-- 11,130,643.07 test all IP fac
+-- 11,194,180.50 test all IP with added non IP
+-- 11,130,643.07 orig
 
 
 
-
--- 829758.19 test SNF/Hospice claims
--- 829758.19 orig
--- with assignment 893295.62, good 
 
 
 
