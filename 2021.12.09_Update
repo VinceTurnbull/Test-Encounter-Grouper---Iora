@@ -113,6 +113,14 @@ UNION ALL
 
 select * from Add_AcuteIP_shells),
 
+-- 11,130,643.07 test all IP fac
+-- 13,206,359.75 test all IP with added non IP
+-- 11,130,643.07 orig
+
+
+
+
+
 
 /************OP Shells for ER, Surgery, Observation (highest in OP hierarchy, so treating them like IP acute facility for shell definition) ***************/
 -- OP identification
@@ -128,6 +136,7 @@ select member_ssn
   from sample_data 
 where unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)
   and dsc_with_hierarchy in ('Observation', 'Emergency Room', 'Outpatient Surgery' )
+group by 1,2,3,4,5,6,7
   ),
 
 OP_Visits as (
@@ -157,32 +166,12 @@ select * from IP_Shells)
 
 
 -- 	4,175,371.62 test, OP fac visits
+--  6,126,617.53 test, OP fac visits with prof attached
 -- 	4,175,371.62 orig, OP fac visits
-
+--  19,332,977.28 out of the 31M total
 
 select sum(allowed_amount)
 from Add_OP_Visits
-
-limit 100
-
-
-
-
-
-
-
-
-
-
-
--- 11,130,643.07 test all IP fac
--- 13,206,359.75 test all IP with added non IP
--- 11,130,643.07 orig
-
-
-	
-
-
 
 
 
