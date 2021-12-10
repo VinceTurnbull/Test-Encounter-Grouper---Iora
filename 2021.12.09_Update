@@ -119,9 +119,6 @@ select * from Add_AcuteIP_shells),
 
 
 
-
-
-
 /************OP Shells for ER, Surgery, Observation (highest in OP hierarchy, so treating them like IP acute facility for shell definition) ***************/
 -- OP identification
 OP_facility_visit_identification as (
@@ -162,7 +159,7 @@ and a.unique_key not in (select unique_key from IP_Shells where unique_key is no
 Add_OP_Visits as (
 select * from OP_Visits
  UNION ALL 
-select * from IP_Shells)
+select * from IP_Shells),
 
 
 -- 	4,175,371.62 test, OP fac visits
@@ -170,20 +167,62 @@ select * from IP_Shells)
 -- 	4,175,371.62 orig, OP fac visits
 --  19,332,977.28 out of the 31M total
 
-select sum(allowed_amount)
-from Add_OP_Visits
+
+/*********Home Health Shell Identification (following OP visits becuase HH falls lower in OP hierarchy)**************/
+-- HH identification
+HH_facility_identification as (
+select member_ssn
+, unique_key
+, coh_admit_date
+, coh_discharge_date
+, major_service_category
+, dsc_with_hierarchy 
+, ACUTE_FLAG
+, (concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_OP_HomeHealth')) as HH_shell_key
+  from sample_data 
+where unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL)
+  and dsc_with_hierarchy in ('Home Health' )
+group by 1,2,3,4,5,6,7
+  ),
+
+HH_Services as (
+select a.*
+, b.HH_shell_key as shell_key
+from sample_data a
+inner join HH_facility_identification  b
+on a.member_ssn = b.member_ssn 
+and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
+where a.major_service_category = 'Professional Services' 
+and a.unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL
+and a.pos = '12')
+
+  
+  UNION ALL
+  
+select a.*
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_OP_HomeHealth')
+from sample_data a
+where a.dsc_with_hierarchy in ('Home Health')
+and a.unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL)),
+
+-- 628,161.78 test HH facility
+-- 679,273.37 test HH facility add professional
+
+Add_HH_Shells as (
+select * from HH_Services
+ UNION ALL 
+select * from Add_OP_Visits)
 
 
 
 
 
 
-/*********OP Visit Shell Identification**************/
 
 
+/*********All Other Shell Identification; all remaining services**************/
 
 
-/*********All Other Shell Identification**************/
 
 
 -- 31,921,982.62 Test
