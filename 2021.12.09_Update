@@ -147,7 +147,7 @@ inner join OP_facility_visit_identification  b
 on a.member_ssn = b.member_ssn 
 and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
 where a.major_service_category = 'Professional Services' 
-and a.unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)
+and a.unique_key not in (select distinct unique_key from IP_Shells where unique_key is not NULL)
 
   
   UNION ALL
@@ -156,7 +156,7 @@ select a.*
 , concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_OP_Visits')
 from sample_data a
 where a.dsc_with_hierarchy in ('Observation', 'Emergency Room', 'Outpatient Surgery' )
-and a.unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)),
+and a.unique_key not in (select distinct unique_key from IP_Shells where unique_key is not NULL)),
 
 
 Add_OP_Visits as (
@@ -183,7 +183,7 @@ select member_ssn
 , ACUTE_FLAG
 , (concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_OP_HomeHealth')) as HH_shell_key
   from sample_data 
-where unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL)
+where unique_key not in (select distinct unique_key from Add_OP_Visits where unique_key is not NULL)
   and dsc_with_hierarchy in ('Home Health' )
 group by 1,2,3,4,5,6,7
   ),
@@ -196,8 +196,8 @@ inner join HH_facility_identification  b
 on a.member_ssn = b.member_ssn 
 and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
 where a.major_service_category = 'Professional Services' 
-and a.unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL
-and a.pos = '12')
+and a.pos = '12'
+and a.unique_key not in (select distinct unique_key from Add_OP_Visits where unique_key is not NULL)
 
   
   UNION ALL
@@ -206,7 +206,7 @@ select a.*
 , concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_OP_HomeHealth')
 from sample_data a
 where a.dsc_with_hierarchy in ('Home Health')
-and a.unique_key not in (select unique_key from Add_OP_Visits where unique_key is not NULL)),
+and a.unique_key not in (select distinct unique_key from Add_OP_Visits where unique_key is not NULL)),
 
 -- 628,161.78 test HH facility
 -- 679,273.37 test HH facility add professional
@@ -221,7 +221,7 @@ All_Other as (
  select *
 , concat(member_ssn, cast(service_from_date as varchar), cast(service_from_date as varchar), '_AllOther')
 from sample_data
-where unique_key not in (select unique_key from Add_HH_Shells where unique_key is not null)
+where unique_key not in (select distinct unique_key from Add_HH_Shells where unique_key is not null)
 ),
 
 Add_AllOther_Shells as (
