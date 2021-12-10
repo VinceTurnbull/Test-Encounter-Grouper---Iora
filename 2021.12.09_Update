@@ -111,12 +111,66 @@ select * from combine_NonAcute_IP_Shells
 
 UNION ALL
 
-select * from Add_AcuteIP_shells)
+select * from Add_AcuteIP_shells),
+
+
+/************OP Shells for ER, Surgery, Observation (highest in OP hierarchy, so treating them like IP acute facility for shell definition) ***************/
+-- OP identification
+OP_facility_visit_identification as (
+select member_ssn
+, unique_key
+, coh_admit_date
+, coh_discharge_date
+, major_service_category
+, dsc_with_hierarchy 
+, ACUTE_FLAG
+, (concat(member_ssn, cast(coh_admit_date as varchar), cast(coh_discharge_date as varchar), '_OP_Visits')) as OP_shell_key
+  from sample_data 
+where unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)
+  and dsc_with_hierarchy in ('Observation', 'Emergency Room', 'Outpatient Surgery' )
+  ),
+
+OP_Visits as (
+select a.*
+, b.OP_shell_key as shell_key
+from sample_data a
+inner join OP_facility_visit_identification  b
+on a.member_ssn = b.member_ssn 
+and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
+where a.major_service_category = 'Professional Services' 
+and a.unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)
+
+  
+  UNION ALL
+  
+select a.*
+, concat(a.member_ssn, cast(a.coh_admit_date as varchar), cast(a.coh_discharge_date as varchar), '_OP_Visits')
+from sample_data a
+where a.dsc_with_hierarchy in ('Observation', 'Emergency Room', 'Outpatient Surgery' )
+and a.unique_key not in (select unique_key from IP_Shells where unique_key is not NULL)),
+
+
+Add_OP_Visits as (
+select * from OP_Visits
+ UNION ALL 
+select * from IP_Shells)
+
+
+-- 	4,175,371.62 test, OP fac visits
+-- 	4,175,371.62 orig, OP fac visits
 
 
 select sum(allowed_amount)
-from IP_Shells
-where major_service_category = 'Inpatient Facility'
+from Add_OP_Visits
+
+limit 100
+
+
+
+
+
+
+
 
 
 
