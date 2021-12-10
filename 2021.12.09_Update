@@ -214,24 +214,24 @@ and a.unique_key not in (select unique_key from Add_OP_Visits where unique_key i
 Add_HH_Shells as (
 select * from HH_Services
  UNION ALL 
-select * from Add_OP_Visits)
+select * from Add_OP_Visits),
 
+/*********All Other Shell Identification; all remaining services**************/
+All_Other as (
+ select *
+, concat(member_ssn, cast(service_from_date as varchar), cast(service_from_date as varchar), '_AllOther')
+from sample_data
+where unique_key not in (select unique_key from Add_HH_Shells where unique_key is not null)
+),
+
+Add_AllOther_Shells as (
+  select * from Add_HH_Shells
+  UNION ALL
+  select * from All_Other)
 
 
 select sum(allowed_amount)
-from Add_HH_Shells
--- where unique_key in (select unique_key from Add_HH_Shells where unique_key is not null)
-
-/*********All Other Shell Identification; all remaining services**************/
--- 20012187.19 assigned
--- 11991594.22 remaining
--- 63.46
-
-
--- 31,921,982.62 Test
--- 31,895,146.59 Orig
-
-
+  from Add_AllOther_Shells
 
 
 
