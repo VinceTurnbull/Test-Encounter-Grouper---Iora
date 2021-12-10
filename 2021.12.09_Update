@@ -94,7 +94,7 @@ inner join (select * from IP_facility_claim_identification where dsc_with_hierar
 on a.member_ssn = b.member_ssn 
 and (a.service_from_date between b.coh_admit_date and b.coh_discharge_date)
 where a.major_service_category != 'Inpatient Facility' 
-  and a.unique_key not in (select distinct unique_key from combine_NonAcute_IP_Shells)
+  and a.pos not in ('31', '32','33','34')
   
   UNION ALL
   
@@ -105,6 +105,7 @@ where a.dsc_with_hierarchy not in ('SNF', 'Hospice')
   and a.major_service_category = 'Inpatient Facility'),
 
 
+
 IP_Shells as (
 select * from combine_NonAcute_IP_Shells
 
@@ -112,18 +113,20 @@ UNION ALL
 
 select * from Add_AcuteIP_shells)
 
+
 select sum(allowed_amount)
 from IP_Shells
--- where major_service_category = 'Inpatient Facility'
-limit 100
+where major_service_category = 'Inpatient Facility'
+
+
 
 
 -- 11,130,643.07 test all IP fac
--- 11,194,180.50 test all IP with added non IP
+-- 13,206,359.75 test all IP with added non IP
 -- 11,130,643.07 orig
 
 
-
+	
 
 
 
