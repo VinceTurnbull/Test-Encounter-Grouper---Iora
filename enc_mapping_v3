@@ -28,10 +28,209 @@ Shell_Key_Proc_Hierarchy as (
   from Join_Shells a),
 
 
+/***************** Relevant Dxs to split shells into related encounters***********/
+relevant_dxs as(
+  select shell_key
+  , concat((case 
+            when substring(diagnosis_code1,1,1) is NULL then 'NULL' 
+            else substring(diagnosis_code1,1,1) end)
+           , ','
+           , (case 
+            when substring(diagnosis_code2,1,1) is NULL then 'NULL' 
+            else substring(diagnosis_code2,1,1) end)) as Dx
+  from Shell_Key_Proc_Hierarchy
+  group by 1,2),
 
+Dx_xWalk as (
+select * 
+, rank() over(partition by shell_key order by allowed_amount_sum desc) as rank_Dx_combo
+from (
+select a.*
+, sum(b.allowed_amount) as allowed_amount_sum
+from relevant_dxs a
+inner join Shell_Key_Proc_Hierarchy b
+on a.shell_key = b.shell_key
+and (a.Dx LIKE concat('%', trim(substring(b.diagnosis_code1,1,1)) ,'%')
+     OR a.Dx LIKE concat('%', trim(substring(b.diagnosis_code2,1,1)) ,'%'))
+where substring(a.Dx,1,1) not in ('R', 'Z')
+and b.shell_key_max != 'M'
+group by 1,2)),
+
+
+-- split to column
+Dx_to_column as (
+select a.*
+, split_part(Dx, ',', 1) as split_dx_1
+, split_part(Dx, ',', 2) as split_dx_2
+from Dx_xWalk a),
+
+
+-- final Dxs and dedup
+final_relevant_Dx as (
+select shell_key
+, Dx
+, rank_Dx_combo
+, (row_number() over(partition by shell_key, rank_Dx_combo )) as row_number
+from (
+select a.*
+, min(b.rank_Dx_combo) as min_Dx_rank
+from Dx_to_column a
+inner join Dx_to_column b
+on a.shell_key = b.shell_key
+and (a.Dx LIKE concat('%', trim(substring(b.split_dx_1,1,1)) ,'%')
+     or a.Dx LIKE concat('%', trim(substring(b.split_dx_2,1,1)) ,'%'))
+ group by 1,2,3,4,5,6)
+ where rank_Dx_combo = min_Dx_rank),
+ 
+ dedup_relevant_dxs as (
+ select *
+ from final_relevant_Dx
+  where row_number = 1),
+
+-- Add enc key edits for M and O proc codes
+-- check if this is too loose of an assumption for Dxs with R and Z chapters
+split_shells as (
 select *
-from Join_Shells
-order by service_from_date
+  , concat(shell_key, cast(Shell_split_rbcsProcedures as varchar)) as encounter_ID
+from(
+select a.*
+, (case 
+   when a.shell_key_max = 'M' then 1 
+   when (a.shell_key_max != 'M' and substring(a.diagnosis_code1,1,1) in ('R', 'Z')) then 1
+   when (a.shell_key_max != 'M' and substring(a.diagnosis_code1,1,1) not in ('R', 'Z')) then b.rank_Dx_combo 
+   else NULL end) as Shell_split_rbcsProcedures
+from Shell_Key_Proc_Hierarchy a
+left join dedup_relevant_dxs b
+on a.shell_key = b.shell_key
+and (b.Dx LIKE concat('%', trim(substring(a.diagnosis_code1,1,1)) ,'%')
+     or b.Dx LIKE concat('%', trim(substring(a.diagnosis_code2,1,1)) ,'%'))
+  )),
+  
+  
+/****** reassign the top rbcsID ********/
+rbcs_id_identification as (
+select encounter_ID
+, rbcs_id
+, rbcs_major_ind
+, shell_key_max
+, sum(allowed_amount) as allowed_amount
+from split_shells
+where encounter_ID is not NULL
+and rbcs_id is not NULL
+group by 1,2,3,4),
+
+-- Encounters with M procedure, highest in hierarchy
+M_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'M'
+group by 1,2)),
+
+O_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'O'
+  and encounter_ID not in (select encounter_ID from M_Enc)
+group by 1,2)),
+
+N_Enc as (
+select *
+, rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
+from(
+select encounter_ID
+, rbcs_id
+, sum(allowed_amount) as sum_allowed
+from rbcs_id_identification
+where rbcs_major_ind = 'N'
+  and encounter_ID not in (select encounter_ID from M_Enc)
+  and encounter_ID not in (select encounter_ID from O_Enc)
+group by 1,2)),
+
+Rank_rbcsID as (
+select * 
+from M_Enc
+where rank_rbcsID = 1
+
+UNION ALL
+
+select * 
+from O_Enc
+where rank_rbcsID = 1
+
+UNION ALL
+
+select * 
+from N_Enc
+where rank_rbcsID = 1),  
+
+
+/************************ Join top rbcsID back to claims **************/ 
+join_top_rbcs as (
+select a.*
+, b.rbcs_id as top_rbcsID
+from split_shells a
+left join Rank_rbcsID b
+on a.encounter_ID = b.encounter_ID),
+
+
+
+RBCS_IDs as (
+  select rbcs_ID
+  , rbcs_cat_desc
+  , rbcs_subcat_desc
+  , rbcs_family_desc
+  from  "testdb"."servicemapping_betos"
+  group by 1,2,3,4),
+
+RBCS_Labels as (
+select a.*
+, d.rbcs_cat_desc as ENC_rbcs_cat_desc
+, d.rbcs_subcat_desc as ENC_rbcs_subcat_desc
+, d.rbcs_family_desc as ENC_rbcs_family_desc
+from join_top_rbcs a
+left join RBCS_IDs d
+on a.top_rbcsID = d.rbcs_ID),
+
+
+
+/************************ Add encounter POS type **************/ 
+pos_assignment as (
+select *
+from (
+select encounter_ID_final
+, pos_type
+, rank() over (partition by encounter_ID_final order by allowed_amount desc) pos_rank
+from (
+select encounter_ID_final
+, (case 
+   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP'
+   else 'OP' end) pos_type
+, sum(allowed_amount) as allowed_amount
+from final_Enc_mapping
+group by 1,2)
+  )
+ where pos_rank = 1
+  group by 1,2,3)
+ 
+ -- map pos
+ select a.*
+ , (case when a.ENC_rbcs_cat_desc_final =  'Other Facility' then a.dsc_with_hierarchy
+    else b.pos_type end) as pos_type
+ from final_Enc_mapping a
+ left join pos_assignment b
+ on a.encounter_ID_final =  b.encounter_ID_final
+
+
 
 
 
