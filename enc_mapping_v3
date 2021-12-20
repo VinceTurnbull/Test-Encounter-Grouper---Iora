@@ -95,6 +95,7 @@ select *
 from(
 select a.*
 , (case 
+   when a.shell_key NOT LIKE '%AllOther%' then 1
    when a.shell_key_max = 'M' then 1 
    when (a.shell_key_max != 'M' and substring(a.diagnosis_code1,1,1) in ('R', 'Z')) then 1
    when (a.shell_key_max != 'M' and substring(a.diagnosis_code1,1,1) not in ('R', 'Z')) then b.rank_Dx_combo 
@@ -117,6 +118,7 @@ select encounter_ID
 from split_shells
 where encounter_ID is not NULL
 and rbcs_id is not NULL
+and reversal_flag = 1
 group by 1,2,3,4),
 
 -- Encounters with M procedure, highest in hierarchy
@@ -189,7 +191,7 @@ RBCS_IDs as (
   , rbcs_cat_desc
   , rbcs_subcat_desc
   , rbcs_family_desc
-  from  "testdb"."servicemapping_betos"
+  from  "reference_library"."cms_rbcs_betos"
   group by 1,2,3,4),
 
 RBCS_Labels as (
