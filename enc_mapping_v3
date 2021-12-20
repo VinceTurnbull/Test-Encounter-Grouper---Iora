@@ -1,3 +1,5 @@
+CREATE TABLE IF NOT EXISTS "testdb"."vt_sample_ga_iora_enc_encounterids_vTEST" AS
+
 -- Join shells to claims, add betos to table
 
 with Join_Shells as (
