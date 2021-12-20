@@ -1,0 +1,37 @@
+-- Join shells to claims, add betos to table
+
+with Join_Shells as (
+select a.*
+, c.rbcs_id
+, c.rbcs_cat_desc
+, c.rbcs_subcat_desc
+, c.rbcs_family_desc
+, c.rbcs_major_ind
+, b.shell_key
+
+from "testdb"."vt_sample_ga_iora_serviceclassification" a
+left join "testdb"."vt_sample_ga_iora_enc_shells_v2" b
+on a.unique_key = b.unique_key
+
+left join "reference_library"."cms_rbcs_betos" c
+on a.procedure_code = c.hcpcs_cd
+
+-- remove this in final version !!!
+where a.member_ssn Like '%20289327%'   
+  ),
+  
+Shell_Key_Proc_Hierarchy as (
+  select a.*
+  , (case when shell_key in (select distinct shell_key from Join_Shells where rbcs_major_ind = 'M' ) then 'M'
+     when shell_key in (select distinct shell_key from Join_Shells where rbcs_major_ind = 'O' ) then 'O'
+     else 'N' end) as shell_key_max
+  from Join_Shells a),
+
+
+
+select *
+from Join_Shells
+order by service_from_date
+
+
+
