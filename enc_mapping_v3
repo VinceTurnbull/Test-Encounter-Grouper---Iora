@@ -207,16 +207,17 @@ on a.top_rbcsID = d.rbcs_ID),
 pos_assignment as (
 select *
 from (
-select encounter_ID_final
+select encounter_ID
 , pos_type
-, rank() over (partition by encounter_ID_final order by allowed_amount desc) pos_rank
+, rank() over (partition by encounter_ID order by allowed_amount desc) pos_rank
 from (
-select encounter_ID_final
+select encounter_ID
 , (case 
-   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP'
-   else 'OP' end) pos_type
+   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP - Other Services'
+   else 'OP - Other Services' end) pos_type
 , sum(allowed_amount) as allowed_amount
-from final_Enc_mapping
+from RBCS_Labels
+  where encounter_ID LIKE '%AllOther%'
 group by 1,2)
   )
  where pos_rank = 1
@@ -224,11 +225,16 @@ group by 1,2)
  
  -- map pos
  select a.*
- , (case when a.ENC_rbcs_cat_desc_final =  'Other Facility' then a.dsc_with_hierarchy
+ , (case 
+    when a.encounter_ID LIKE '%IP_Acute%' then 'IP - Acute'
+    when a.encounter_ID LIKE '%IP_SNF%' then 'IP - SNF'
+    when a.encounter_ID LIKE '%IP_Hospice%' then 'IP - Hospice'
+    when a.encounter_ID LIKE '%OP_Visits%' then 'OP - Visits'
+    when a.encounter_ID LIKE '%OP_HomeHealth%' then 'OP - Home Health'
     else b.pos_type end) as pos_type
- from final_Enc_mapping a
+ from RBCS_Labels a
  left join pos_assignment b
- on a.encounter_ID_final =  b.encounter_ID_final
+ on a.encounter_ID =  b.encounter_ID
 
 
 
