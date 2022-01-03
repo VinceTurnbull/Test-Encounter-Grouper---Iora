@@ -22,6 +22,7 @@ on a.procedure_code = c.hcpcs_cd
 -- where a.member_ssn Like '%20289327%'   
   ),
  
+ 
   
 Shell_Key_Proc_Hierarchy as (
   select a.*
@@ -132,9 +133,74 @@ select a.*
 , b.rbcs_id as top_rbcsID
 from Encounter_key_max a
 left join Rank_rbcsID b
-on a.encounter_ID = b.encounter_ID)
+on a.encounter_ID = b.encounter_ID),
 
 
-select 
-sum( allowed_amount)
-from join_top_rbcs
+RBCS_IDs as (
+  select rbcs_ID
+  , rbcs_cat_desc
+  , rbcs_subcat_desc
+  , rbcs_family_desc
+  from  "reference_library"."cms_rbcs_betos"
+  group by 1,2,3,4),
+
+RBCS_Labels as (
+select a.*
+, d.rbcs_cat_desc as ENC_rbcs_cat_desc
+, d.rbcs_subcat_desc as ENC_rbcs_subcat_desc
+, d.rbcs_family_desc as ENC_rbcs_family_desc
+from join_top_rbcs a
+left join RBCS_IDs d
+on a.top_rbcsID = d.rbcs_ID),
+
+
+/************************ Add encounter POS type **************/ 
+pos_assignment as (
+select *
+from (
+select encounter_ID
+, pos_type
+, rank() over (partition by encounter_ID order by allowed_amount desc) pos_rank
+from (
+select encounter_ID
+, (case 
+   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP - Other Services'
+   else 'OP - Other Services' end) pos_type
+, sum(allowed_amount) as allowed_amount
+from RBCS_Labels
+  where encounter_ID LIKE '%AllOther%'
+group by 1,2)
+  )
+ where pos_rank = 1
+  group by 1,2,3),
+  
+-- there could be a tie with the pos assignment, breaking the tie in $ below
+break_pos_tie as (
+select * 
+from (
+select *
+, row_number() over (partition by encounter_id) as dup
+from pos_assignment)
+where dup = 1),
+
+ 
+ -- map pos
+map_pos as (
+select a.*
+ , (case 
+    when a.encounter_ID LIKE '%IP_Acute%' then 'IP - Acute'
+    when a.encounter_ID LIKE '%IP_SNF%' then 'IP - SNF'
+    when a.encounter_ID LIKE '%IP_Hospice%' then 'IP - Hospice'
+    when a.encounter_ID LIKE '%OP_Visits%' then 'OP - Visits'
+    when a.encounter_ID LIKE '%OP_HomeHealth%' then 'OP - Home Health'
+    else b.pos_type end) as pos_type
+ from RBCS_Labels a
+ left join break_pos_tie b
+ on a.encounter_ID =  b.encounter_ID )
+
+select *
+from map_pos
+
+
+
+
