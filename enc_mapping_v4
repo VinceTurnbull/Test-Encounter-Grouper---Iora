@@ -41,6 +41,7 @@ select *
    ) ,
    
 
+
 /****** reassign the top rbcsID ********/
 rbcs_id_identification as (
 select encounter_ID
@@ -55,9 +56,11 @@ and reversal_flag = 1
 group by 1,2,3,4),
 
 
-
 -- Encounters with M procedure, highest in hierarchy
 M_Enc as (
+select *
+  , row_number() over( partition by encounter_ID) as encounter_dup_count
+  from (
 select *
 , rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
 from(
@@ -66,9 +69,14 @@ select encounter_ID
 , sum(allowed_amount) as sum_allowed
 from rbcs_id_identification
 where rbcs_major_ind = 'M'
-group by 1,2)),
+group by 1,2))
+ where rank_rbcsID = 1)
+,
 
 O_Enc as (
+select *
+  , row_number() over( partition by encounter_ID) as encounter_dup_count
+  from (  
 select *
 , rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
 from(
@@ -78,9 +86,14 @@ select encounter_ID
 from rbcs_id_identification
 where rbcs_major_ind = 'O'
   and encounter_ID not in (select encounter_ID from M_Enc)
-group by 1,2)),
+group by 1,2))
+ where rank_rbcsID = 1)
+,
 
 N_Enc as (
+select *
+  , row_number() over( partition by encounter_ID) as encounter_dup_count
+  from (  
 select *
 , rank() over (partition by encounter_ID order by sum_allowed desc) as rank_rbcsID
 from(
@@ -91,24 +104,26 @@ from rbcs_id_identification
 where rbcs_major_ind = 'N'
   and encounter_ID not in (select encounter_ID from M_Enc)
   and encounter_ID not in (select encounter_ID from O_Enc)
-group by 1,2)),
+group by 1,2))
+where rank_rbcsID = 1)
+  ,
 
 Rank_rbcsID as (
 select * 
 from M_Enc
-where rank_rbcsID = 1
+where encounter_dup_count = 1
 
 UNION ALL
 
 select * 
 from O_Enc
-where rank_rbcsID = 1
+where encounter_dup_count = 1
 
 UNION ALL
 
 select * 
 from N_Enc
-where rank_rbcsID = 1),  
+where encounter_dup_count = 1),  
 
 
 /************************ Join top rbcsID back to claims **************/ 
@@ -117,73 +132,9 @@ select a.*
 , b.rbcs_id as top_rbcsID
 from Encounter_key_max a
 left join Rank_rbcsID b
-on a.encounter_ID = b.encounter_ID),
+on a.encounter_ID = b.encounter_ID)
 
 
-
-RBCS_IDs as (
-  select rbcs_ID
-  , rbcs_cat_desc
-  , rbcs_subcat_desc
-  , rbcs_family_desc
-  from  "reference_library"."cms_rbcs_betos"
-  group by 1,2,3,4),
-
-RBCS_Labels as (
-select a.*
-, d.rbcs_cat_desc as ENC_rbcs_cat_desc
-, d.rbcs_subcat_desc as ENC_rbcs_subcat_desc
-, d.rbcs_family_desc as ENC_rbcs_family_desc
-from join_top_rbcs a
-left join RBCS_IDs d
-on a.top_rbcsID = d.rbcs_ID),
-
-
-
-/************************ Add encounter POS type **************/ 
-pos_assignment as (
-select *
-from (
-select encounter_ID
-, pos_type
-, rank() over (partition by encounter_ID order by allowed_amount desc) pos_rank
-from (
-select encounter_ID
-, (case 
-   when (major_service_category = 'Inpatient Facility' or (major_service_category = 'Professional Services' and pos in ('13','21', '27', '28', '31', '32', '33', '34', '35', '51', '55', '56', '61'))) then 'IP - Other Services'
-   else 'OP - Other Services' end) pos_type
-, sum(allowed_amount) as allowed_amount
-from RBCS_Labels
-  where encounter_ID LIKE '%AllOther%'
-group by 1,2)
-  )
- where pos_rank = 1
-  group by 1,2,3),
- 
- -- map pos
- map_pos as (
- select a.*
- , (case 
-    when a.encounter_ID LIKE '%IP_Acute%' then 'IP - Acute'
-    when a.encounter_ID LIKE '%IP_SNF%' then 'IP - SNF'
-    when a.encounter_ID LIKE '%IP_Hospice%' then 'IP - Hospice'
-    when a.encounter_ID LIKE '%OP_Visits%' then 'OP - Visits'
-    when a.encounter_ID LIKE '%OP_HomeHealth%' then 'OP - Home Health'
-    else b.pos_type end) as pos_type
- from RBCS_Labels a
- left join pos_assignment b
- on a.encounter_ID =  b.encounter_ID)
- 
-
-
-
-
-
-
-   
-   
-   
-   
-   
-   
-
+select 
+sum( allowed_amount)
+from join_top_rbcs
